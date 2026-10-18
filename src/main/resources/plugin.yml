@@ -1,0 +1,22 @@
+name: SmpWeapons
+version: 1.0.0
+main: com.smp.weapons.SmpWeapons
+api-version: "26.2"
+description: Custom legendary weapons with abilities for SMP servers
+commands:
+  smpweapons:
+    description: Admin command for SmpWeapons
+    usage: /smpweapons [give|list|reset|start]
+    aliases: [smpw]
+    permission: smpweapons.admin
+  rc:
+    description: Reset your weapon cooldowns
+    usage: /rc
+    permission: smpweapons.admin
+permissions:
+  smpweapons.admin:
+    description: Admin commands (give weapons, reset cooldowns, start countdown)
+    default: op
+  smpweapons.use:
+    description: Allows using weapon abilities
+    default: true

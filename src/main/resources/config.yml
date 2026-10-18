@@ -1,0 +1,58 @@
+# ---------------------------------------------------------------
+# SmpWeapons config
+# Recipes: 3 rows of 3 letters. Use a space for an empty slot.
+# Ingredients map each letter to a Minecraft material name
+# (e.g. NETHERITE_SWORD). Restart the server after editing.
+# Do not use the letters Y or N as ingredient keys.
+# ---------------------------------------------------------------
+recipes:
+  titan_blade:
+    shape: ["DBX", "ASA", "XBD"]
+    ingredients:
+      "D": DIAMOND_BLOCK
+      "B": SPYGLASS
+      "X": NETHERITE_BLOCK
+      "A": ENCHANTED_GOLDEN_APPLE
+      "S": NETHERITE_SWORD
+  sonic_crossbow:
+    shape: ["PEP", "ECE", "PEP"]
+    ingredients:
+      "P": OAK_PLANKS
+      "E": ECHO_SHARD
+      "C": CROSSBOW
+  doom_hammer:
+    shape: ["WSW", "SWS", "WLW"]
+    ingredients:
+      "W": WIND_CHARGE
+      "S": NETHERITE_SWORD
+      "L": LIGHTNING_ROD
+  dragon_blade:
+    shape: ["WFW", "FHF", "WSW"]
+    ingredients:
+      "W": WIND_CHARGE
+      "F": FIRE_CHARGE
+      "H": DRAGON_EGG
+      "S": NETHERITE_SWORD
+  fire_blade:
+    shape: ["FSF", "ZRZ", "FSF"]
+    ingredients:
+      "F": FIRE_CHARGE
+      "S": NETHERITE_SWORD
+      "Z": BLAZE_POWDER
+      "R": BLAZE_ROD
+  auto_bow:
+    shape: ["KRK", "ROR", "KRK"]
+    ingredients:
+      "K": SKELETON_SKULL
+      "R": ARROW
+      "O": BOW
+
+# ---------------------------------------------------------------
+# Resource pack (custom textures). Upload the pack zip somewhere
+# with a direct download link, paste the link here, restart.
+# sha1 is optional, leave "" if you are not sure.
+# ---------------------------------------------------------------
+resource-pack:
+  url: ""
+  sha1: ""
+  force: true

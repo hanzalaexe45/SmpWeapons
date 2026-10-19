@@ -14,6 +14,7 @@ import org.bukkit.Sound;
 import org.bukkit.World;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
+import org.bukkit.attribute.AttributeModifier;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabExecutor;
@@ -28,6 +29,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.entity.EntityShootBowEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.PrepareItemCraftEvent;
@@ -35,6 +37,7 @@ import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.EquipmentSlot;
+import org.bukkit.inventory.EquipmentSlotGroup;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemStack;
@@ -114,6 +117,26 @@ public class SmpWeapons extends JavaPlugin implements Listener, TabExecutor {
                 }
             }
         }, 20L, 20L);
+
+        // Ambient aura particles around whoever holds a weapon
+        Bukkit.getScheduler().runTaskTimer(this, () -> {
+            for (Player p : Bukkit.getOnlinePlayers()) {
+                String wid = weaponId(p.getInventory().getItemInMainHand());
+                if (wid == null) continue;
+                Particle part = switch (wid) {
+                    case "dragon_blade" -> Particle.WITCH;
+                    case "fire_blade" -> Particle.FLAME;
+                    case "titan_blade" -> Particle.END_ROD;
+                    case "doom_hammer" -> Particle.ELECTRIC_SPARK;
+                    case "sonic_crossbow" -> Particle.SCULK_SOUL;
+                    case "auto_bow" -> Particle.SOUL_FIRE_FLAME;
+                    default -> null;
+                };
+                if (part == null) continue;
+                Location l = p.getLocation().add(p.getLocation().getDirection().multiply(0.7)).add(0, 1.2, 0);
+                p.getWorld().spawnParticle(part, l, 3, 0.35, 0.5, 0.35, 0.01);
+            }
+        }, 4L, 4L);
 
         getLogger().info("SmpWeapons enabled with " + weapons.size() + " weapons.");
     }
@@ -213,6 +236,14 @@ public class SmpWeapons extends JavaPlugin implements Listener, TabExecutor {
                 .decoration(TextDecoration.ITALIC, false));
         meta.lore(buildLore(w, id.equals("auto_bow") ? 0 : -1));
         meta.setUnbreakable(true);
+        if (w.base() != Material.BOW && w.base() != Material.CROSSBOW) {
+            meta.addAttributeModifier(Attribute.ATTACK_DAMAGE, new AttributeModifier(
+                    new NamespacedKey(this, "dmg_" + id), 11.0,
+                    AttributeModifier.Operation.ADD_NUMBER, EquipmentSlotGroup.MAINHAND));
+            meta.addAttributeModifier(Attribute.ATTACK_SPEED, new AttributeModifier(
+                    new NamespacedKey(this, "spd_" + id), id.equals("doom_hammer") ? -3.0 : -2.4,
+                    AttributeModifier.Operation.ADD_NUMBER, EquipmentSlotGroup.MAINHAND));
+        }
         meta.setItemModel(new NamespacedKey(this, id));
         meta.getPersistentDataContainer().set(weaponKey, PersistentDataType.STRING, id);
         item.setItemMeta(meta);
@@ -346,6 +377,12 @@ public class SmpWeapons extends JavaPlugin implements Listener, TabExecutor {
         Player p = e.getPlayer();
         if (resized.contains(p.getUniqueId())) resetScale(p);
         dragonShots.remove(p.getUniqueId());
+    }
+
+    @EventHandler
+    public void onShoot(EntityShootBowEvent e) {
+        if (weaponId(e.getBow()) == null) return;
+        if (e.getProjectile() instanceof AbstractArrow arrow) arrow.setDamage(4.0);
     }
 
     @EventHandler
@@ -682,12 +719,23 @@ public class SmpWeapons extends JavaPlugin implements Listener, TabExecutor {
 
     private void arrowStorm(Player p) {
         ItemStack held = p.getInventory().getItemInMainHand();
-        int stored = getStored(held);
         long rem = remainingMs(p, "auto_bow:right");
         if (rem > 0) { cdMsg(p, rem); return; }
+        int stored = getStored(held);
         if (stored <= 0) {
-            bar(p, "Quiver is empty - sneak + left-click to add arrows", NamedTextColor.RED);
-            return;
+            int have = 0;
+            for (ItemStack it : p.getInventory().getContents()) {
+                if (it != null && it.getType() == Material.ARROW) have += it.getAmount();
+            }
+            int take = Math.min(have, MAX_ARROWS);
+            if (take <= 0) {
+                bar(p, "No arrows! Keep arrows in your inventory (or sneak + left-click to fill the quiver)", NamedTextColor.RED);
+                return;
+            }
+            p.getInventory().removeItem(new ItemStack(Material.ARROW, take));
+            setStored(held, take);
+            p.getInventory().setItemInMainHand(held);
+            stored = take;
         }
         setCd(p, "auto_bow:right", 7_000);
         final int shots = Math.min(stored, MAX_ARROWS);
@@ -704,6 +752,7 @@ public class SmpWeapons extends JavaPlugin implements Listener, TabExecutor {
                         (rnd.nextDouble() - 0.5) * 0.2);
                 Arrow a = p.launchProjectile(Arrow.class, p.getEyeLocation().getDirection().multiply(3.0).add(spread));
                 a.setPickupStatus(AbstractArrow.PickupStatus.DISALLOWED);
+                a.setDamage(4.0);
                 fired++;
                 setStored(cur, Math.max(0, getStored(cur) - 1));
                 p.getInventory().setItemInMainHand(cur);

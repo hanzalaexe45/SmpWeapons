@@ -29,7 +29,9 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.entity.EntityShootBowEvent;
+import org.bukkit.event.entity.ProjectileHitEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.PrepareItemCraftEvent;
@@ -88,6 +90,7 @@ public class SmpWeapons extends JavaPlugin implements Listener, TabExecutor {
     private NamespacedKey weaponKey;
     private NamespacedKey arrowsKey;
     private NamespacedKey resizedKey;
+    private NamespacedKey boomKey;
 
     // ------------------------------------------------------------------
     // Setup
@@ -99,6 +102,7 @@ public class SmpWeapons extends JavaPlugin implements Listener, TabExecutor {
         weaponKey = new NamespacedKey(this, "weapon_id");
         arrowsKey = new NamespacedKey(this, "stored_arrows");
         resizedKey = new NamespacedKey(this, "resized");
+        boomKey = new NamespacedKey(this, "boom_arrow");
 
         registerWeapons();
         registerRecipes();
@@ -156,25 +160,26 @@ public class SmpWeapons extends JavaPlugin implements Listener, TabExecutor {
     private void registerWeapons() {
         addWeapon("titan_blade", Material.NETHERITE_SWORD, "Titan Blade", 0x4FD8FF,
                 "Right-Click (Sneak): Giant's Curse",
-                "Left-Click (Sneak): Pocket Size",
+                "Left-Click (Sneak): Titan Form",
                 "On-Hit: Heavy knockback");
         addWeapon("fire_blade", Material.NETHERITE_SWORD, "Fire Blade", 0xFF8A1E,
                 "Passive: Fire Resistance while held",
-                "Right-Click (Sneak): Inferno Breath",
-                "Left-Click (Sneak): Rebirth Flame");
+                "Right-Click (Sneak): Inferno Wave",
+                "Left-Click (Sneak): Phoenix Rebirth");
         addWeapon("dragon_blade", Material.NETHERITE_SWORD, "Dragon Blade", 0xC45CFF,
-                "Right-Click (Sneak): Dragonfire Volley",
+                "Passive: Kills heal you",
+                "Right-Click (Sneak): Dragon's Wrath",
                 "Left-Click (Sneak): Wyrm Dash");
         addWeapon("doom_hammer", Material.NETHERITE_AXE, "Doom Hammer", 0xFFE24A,
-                "Right-Click (Sneak): Thunder Leap",
-                "Left-Click (Sneak): Storm Dash",
+                "Right-Click (Sneak): Meteor Slam",
+                "Left-Click (Sneak): Chain Lightning",
                 "On-Hit: Heavy knockback");
         addWeapon("sonic_crossbow", Material.CROSSBOW, "Sonic Crossbow", 0x5CF0F5,
-                "Right-Click (Sneak): Sonic Wave",
+                "Right-Click (Sneak): Sonic Railgun",
                 "Left-Click (Sneak): Echo Heal");
         addWeapon("auto_bow", Material.BOW, "Auto Bow", 0x7CFF8C,
                 "Left-Click (Sneak): Open quiver",
-                "Right-Click (Sneak): Arrow Storm");
+                "Right-Click (Sneak): Arrow Storm (explosive)");
     }
 
     private void registerRecipes() {
@@ -386,6 +391,34 @@ public class SmpWeapons extends JavaPlugin implements Listener, TabExecutor {
     }
 
     @EventHandler
+    public void onKill(EntityDeathEvent e) {
+        Player k = e.getEntity().getKiller();
+        if (k == null) return;
+        if (!"dragon_blade".equals(weaponId(k.getInventory().getItemInMainHand()))) return;
+        AttributeInstance max = k.getAttribute(Attribute.MAX_HEALTH);
+        double mx = max != null ? max.getValue() : 20.0;
+        k.setHealth(Math.min(mx, k.getHealth() + 6.0));
+        k.getWorld().spawnParticle(Particle.HEART, k.getLocation().add(0, 1.5, 0), 5, 0.4, 0.4, 0.4, 0);
+    }
+
+    @EventHandler
+    public void onArrowHit(ProjectileHitEvent e) {
+        if (!(e.getEntity() instanceof AbstractArrow arrow)) return;
+        if (!arrow.getPersistentDataContainer().has(boomKey, PersistentDataType.BYTE)) return;
+        Location l = arrow.getLocation();
+        World w = l.getWorld();
+        w.spawnParticle(Particle.EXPLOSION, l, 1);
+        w.playSound(l, Sound.ENTITY_GENERIC_EXPLODE, 0.8f, 1.4f);
+        Player shooter = arrow.getShooter() instanceof Player sp ? sp : null;
+        for (LivingEntity le : w.getNearbyLivingEntities(l, 3)) {
+            if (le instanceof ArmorStand || (shooter != null && le.equals(shooter))) continue;
+            if (shooter != null) le.damage(5.0, shooter);
+            else le.damage(5.0);
+        }
+        Bukkit.getScheduler().runTask(this, arrow::remove);
+    }
+
+    @EventHandler
     public void onPrepare(PrepareItemCraftEvent e) {
         for (ItemStack it : e.getInventory().getMatrix()) {
             if (it != null && weaponId(it) != null) {
@@ -480,16 +513,16 @@ public class SmpWeapons extends JavaPlugin implements Listener, TabExecutor {
     private void cast(Player p, String id, boolean right) {
         String k = id + (right ? ":right" : ":left");
         switch (k) {
-            case "fire_blade:right" -> flamesBreath(p);
+            case "fire_blade:right" -> infernoWave(p);
             case "fire_blade:left" -> phoenixRebirth(p);
-            case "dragon_blade:right" -> dragonBreath(p);
+            case "dragon_blade:right" -> dragonWrath(p);
             case "dragon_blade:left" -> dragonDash(p);
-            case "sonic_crossbow:right" -> sonicBurst(p);
+            case "sonic_crossbow:right" -> sonicRailgun(p);
             case "sonic_crossbow:left" -> echoRecovery(p);
-            case "doom_hammer:right" -> thunderLeap(p);
-            case "doom_hammer:left" -> stormDash(p);
+            case "doom_hammer:right" -> meteorSlam(p);
+            case "doom_hammer:left" -> chainLightning(p);
             case "titan_blade:right" -> giantsCurse(p);
-            case "titan_blade:left" -> pocketSize(p);
+            case "titan_blade:left" -> titanForm(p);
             case "auto_bow:right" -> arrowStorm(p);
             case "auto_bow:left" -> openQuiver(p);
             default -> { }
@@ -498,107 +531,126 @@ public class SmpWeapons extends JavaPlugin implements Listener, TabExecutor {
 
     // ---------------- Fire Blade ----------------
 
-    private void flamesBreath(Player p) {
-        if (!tryUse(p, "fire_blade:right", 10)) return;
-        p.getWorld().playSound(p.getLocation(), Sound.ENTITY_BLAZE_SHOOT, 1f, 0.7f);
+    private void infernoWave(Player p) {
+        if (!tryUse(p, "fire_blade:right", 12)) return;
+        final Vector dir = flatDir(p);
+        final World w = p.getWorld();
+        w.playSound(p.getLocation(), Sound.ENTITY_BLAZE_SHOOT, 1.5f, 0.6f);
+        w.playSound(p.getLocation(), Sound.ENTITY_GENERIC_EXPLODE, 1.0f, 1.4f);
+        for (LivingEntity le : w.getNearbyLivingEntities(p.getLocation(), 10)) {
+            if (le.equals(p) || le instanceof ArmorStand) continue;
+            Vector to = le.getLocation().toVector().subtract(p.getLocation().toVector());
+            to.setY(0);
+            double dist = to.length();
+            if (dist < 0.01 || dist > 9) continue;
+            if (to.normalize().dot(dir) < 0.55) continue;
+            le.damage(10.0, p);
+            le.setFireTicks(120);
+            le.setVelocity(dir.clone().multiply(1.8).setY(0.7));
+        }
         new BukkitRunnable() {
             int t = 0;
             @Override public void run() {
-                if (!p.isOnline() || p.isDead() || t >= 40) { cancel(); return; }
-                t += 2;
-                Location eye = p.getEyeLocation();
-                Vector dir = eye.getDirection();
-                World w = p.getWorld();
-                for (double d = 1; d <= 10; d += 0.5) {
-                    w.spawnParticle(Particle.FLAME, eye.clone().add(dir.clone().multiply(d)), 2, 0.12, 0.12, 0.12, 0.01);
+                if (t >= 7 || !p.isOnline()) { cancel(); return; }
+                double r = 1.5 + t * 1.2;
+                Location base = p.getLocation().add(0, 1.0, 0);
+                for (int a = -50; a <= 50; a += 6) {
+                    Vector v = dir.clone().rotateAroundY(Math.toRadians(a)).multiply(r);
+                    Location l = base.clone().add(v);
+                    w.spawnParticle(Particle.FLAME, l, 2, 0.15, 0.3, 0.15, 0.02);
+                    if (a % 18 == 0) w.spawnParticle(Particle.LAVA, l, 1);
                 }
-                if (t % 4 == 0) {
-                    for (LivingEntity le : w.getNearbyLivingEntities(eye, 11)) {
-                        if (le.equals(p) || le instanceof ArmorStand) continue;
-                        Vector to = le.getEyeLocation().toVector().subtract(eye.toVector());
-                        double dist = to.length();
-                        if (dist > 10 || dist < 0.01) continue;
-                        if (to.normalize().dot(dir) > 0.93) {
-                            le.damage(2.0, p);
-                            le.setFireTicks(100);
-                        }
-                    }
-                }
+                t++;
             }
-        }.runTaskTimer(this, 0L, 2L);
+        }.runTaskTimer(this, 0L, 1L);
     }
 
     private void phoenixRebirth(Player p) {
-        if (!tryUse(p, "fire_blade:left", 15)) return;
+        if (!tryUse(p, "fire_blade:left", 25)) return;
         AttributeInstance max = p.getAttribute(Attribute.MAX_HEALTH);
         p.setHealth(max != null ? max.getValue() : 20.0);
         p.setFoodLevel(20);
         p.setSaturation(20f);
+        p.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, 100, 2));
+        p.addPotionEffect(new PotionEffect(PotionEffectType.ABSORPTION, 200, 2));
         Location l = p.getLocation().add(0, 1, 0);
-        p.getWorld().spawnParticle(Particle.FLAME, l, 50, 0.5, 0.8, 0.5, 0.06);
+        p.getWorld().spawnParticle(Particle.FLAME, l, 80, 0.6, 0.9, 0.6, 0.08);
         p.getWorld().spawnParticle(Particle.HEART, l, 8, 0.5, 0.8, 0.5, 0);
         p.getWorld().playSound(l, Sound.ENTITY_PLAYER_LEVELUP, 1f, 1.4f);
     }
 
     // ---------------- Dragon Blade ----------------
 
-    private void dragonBreath(Player p) {
-        UUID id = p.getUniqueId();
-        long rem = remainingMs(p, "dragon_blade:right");
-        if (rem > 0) { cdMsg(p, rem); return; }
-        if (remainingMs(p, "dragon_shot") > 0) return;
-
-        int shots = dragonShots.getOrDefault(id, 0) + 1;
-        DragonFireball fb = p.launchProjectile(DragonFireball.class);
-        fb.setVelocity(p.getEyeLocation().getDirection().multiply(1.2));
-        p.getWorld().playSound(p.getLocation(), Sound.ENTITY_ENDER_DRAGON_SHOOT, 1f, 1f);
-        setCd(p, "dragon_shot", 700);
-
-        if (shots >= 3) {
-            dragonShots.remove(id);
-            setCd(p, "dragon_blade:right", 30_000);
-            bar(p, "Dragonfire 3/3 - recharging 30s", NamedTextColor.LIGHT_PURPLE);
-        } else {
-            dragonShots.put(id, shots);
-            bar(p, "Dragonfire " + shots + "/3", NamedTextColor.LIGHT_PURPLE);
-        }
+    private void dragonWrath(Player p) {
+        if (!tryUse(p, "dragon_blade:right", 25)) return;
+        p.getWorld().playSound(p.getLocation(), Sound.ENTITY_ENDER_DRAGON_GROWL, 1.5f, 0.8f);
+        new BukkitRunnable() {
+            int t = 0;
+            @Override public void run() {
+                if (!p.isOnline() || p.isDead() || t >= 60) { cancel(); return; }
+                t += 2;
+                Location eye = p.getEyeLocation();
+                Vector dir = eye.getDirection().normalize();
+                World w = p.getWorld();
+                double len = 20;
+                for (double d = 1.5; d <= 20; d += 0.5) {
+                    Location pt = eye.clone().add(dir.clone().multiply(d));
+                    if (pt.getBlock().getType().isSolid()) { len = d; break; }
+                    w.spawnParticle(Particle.WITCH, pt, 3, 0.25, 0.25, 0.25, 0.02);
+                    w.spawnParticle(Particle.PORTAL, pt, 2, 0.3, 0.3, 0.3, 0.3);
+                }
+                if (t % 4 == 0) {
+                    for (LivingEntity le : w.getNearbyLivingEntities(eye, 21)) {
+                        if (le.equals(p) || le instanceof ArmorStand) continue;
+                        Vector to = le.getBoundingBox().getCenter().subtract(eye.toVector());
+                        double along = to.dot(dir);
+                        if (along < 0 || along > len) continue;
+                        if (to.subtract(dir.clone().multiply(along)).length() > 1.8) continue;
+                        le.damage(2.5, p);
+                        le.setFireTicks(60);
+                    }
+                }
+            }
+        }.runTaskTimer(this, 0L, 2L);
     }
 
     private void dragonDash(Player p) {
-        if (!tryUse(p, "dragon_blade:left", 12)) return;
-        p.setVelocity(flatDir(p).multiply(1.8).setY(0.25));
+        if (!tryUse(p, "dragon_blade:left", 10)) return;
+        p.setVelocity(flatDir(p).multiply(2.2).setY(0.2));
         p.getWorld().playSound(p.getLocation(), Sound.ENTITY_ENDER_DRAGON_FLAP, 1f, 1f);
-        dashHit(p, Particle.FLAME, 6.0, true, 10);
+        dashHit(p, Particle.WITCH, 10.0, true, 10);
     }
 
     // ---------------- Sonic Crossbow ----------------
 
-    private void sonicBurst(Player p) {
+    private void sonicRailgun(Player p) {
         if (!tryUse(p, "sonic_crossbow:right", 15)) return;
         final Location start = p.getEyeLocation();
         final Vector dir = start.getDirection().normalize();
-        p.getWorld().playSound(start, Sound.ENTITY_WARDEN_SONIC_BOOM, 1f, 1.2f);
+        p.getWorld().playSound(start, Sound.ENTITY_WARDEN_SONIC_BOOM, 1.5f, 1.0f);
         new BukkitRunnable() {
             int step = 0;
             final Set<UUID> hit = new HashSet<>();
             @Override public void run() {
                 step++;
-                Location pt = start.clone().add(dir.clone().multiply(step * 1.5));
+                Location pt = start.clone().add(dir.clone().multiply(step * 3.0));
                 if (step > 10 || pt.getBlock().getType().isSolid()) { cancel(); return; }
                 World w = pt.getWorld();
                 w.spawnParticle(Particle.SONIC_BOOM, pt, 1);
-                for (LivingEntity le : w.getNearbyLivingEntities(pt, 2.0)) {
+                w.spawnParticle(Particle.END_ROD, pt, 6, 0.4, 0.4, 0.4, 0.05);
+                for (LivingEntity le : w.getNearbyLivingEntities(pt, 2.6)) {
                     if (le.equals(p) || le instanceof ArmorStand || !hit.add(le.getUniqueId())) continue;
-                    le.damage(5.0, p);
-                    le.setVelocity(dir.clone().multiply(2.2).setY(0.5));
+                    le.damage(14.0, p);
+                    le.setVelocity(dir.clone().multiply(3.0).setY(0.7));
                 }
             }
         }.runTaskTimer(this, 0L, 1L);
     }
 
     private void echoRecovery(Player p) {
-        if (!tryUse(p, "sonic_crossbow:left", 5)) return;
+        if (!tryUse(p, "sonic_crossbow:left", 8)) return;
         p.addPotionEffect(new PotionEffect(PotionEffectType.REGENERATION, 200, 2));
+        p.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 100, 2));
         Location l = p.getLocation().add(0, 1, 0);
         p.getWorld().spawnParticle(Particle.SONIC_BOOM, l, 1);
         p.getWorld().spawnParticle(Particle.HEART, l, 6, 0.5, 0.8, 0.5, 0);
@@ -607,19 +659,20 @@ public class SmpWeapons extends JavaPlugin implements Listener, TabExecutor {
 
     // ---------------- Doom Hammer ----------------
 
-    private void thunderLeap(Player p) {
-        if (!tryUse(p, "doom_hammer:right", 5)) return;
-        p.setVelocity(flatDir(p).multiply(1.1).setY(0.9));
-        p.getWorld().playSound(p.getLocation(), Sound.ENTITY_IRON_GOLEM_ATTACK, 1f, 0.6f);
+    private void meteorSlam(Player p) {
+        if (!tryUse(p, "doom_hammer:right", 10)) return;
+        p.setVelocity(flatDir(p).multiply(0.6).setY(1.5));
+        p.getWorld().playSound(p.getLocation(), Sound.ENTITY_IRON_GOLEM_ATTACK, 1f, 0.5f);
         new BukkitRunnable() {
             int t = 0;
             @Override public void run() {
                 if (!p.isOnline() || p.isDead()) { cancel(); return; }
                 t++;
                 p.setFallDistance(0f);
-                p.getWorld().spawnParticle(Particle.ELECTRIC_SPARK, p.getLocation(), 6, 0.3, 0.1, 0.3, 0.05);
-                if (t == 10) p.setVelocity(p.getVelocity().setY(-1.5));
-                if (t > 4 && (p.isOnGround() || t > 40)) {
+                p.getWorld().spawnParticle(Particle.ELECTRIC_SPARK, p.getLocation(), 8, 0.4, 0.2, 0.4, 0.05);
+                p.getWorld().spawnParticle(Particle.FLAME, p.getLocation(), 4, 0.3, 0.1, 0.3, 0.02);
+                if (t == 14) p.setVelocity(new Vector(0, -2.6, 0));
+                if (t > 6 && (p.isOnGround() || t > 60)) {
                     slam(p);
                     cancel();
                 }
@@ -628,26 +681,80 @@ public class SmpWeapons extends JavaPlugin implements Listener, TabExecutor {
     }
 
     private void slam(Player p) {
-        Location loc = p.getLocation();
-        World w = p.getWorld();
+        final Location loc = p.getLocation();
+        final World w = loc.getWorld();
         w.strikeLightningEffect(loc);
-        w.spawnParticle(Particle.EXPLOSION, loc, 3, 1, 0.2, 1, 0);
-        w.playSound(loc, Sound.ENTITY_GENERIC_EXPLODE, 1.2f, 0.8f);
-        for (LivingEntity le : w.getNearbyLivingEntities(loc, 6)) {
+        w.playSound(loc, Sound.ENTITY_GENERIC_EXPLODE, 1.5f, 0.6f);
+        w.spawnParticle(Particle.EXPLOSION_EMITTER, loc, 1);
+        for (LivingEntity le : w.getNearbyLivingEntities(loc, 8)) {
             if (le.equals(p) || le instanceof ArmorStand) continue;
-            le.damage(8.0, p);
-            le.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 60, 1));
+            le.damage(14.0, p);
+            le.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 80, 2));
             Vector kb = le.getLocation().toVector().subtract(loc.toVector()).setY(0);
             if (kb.lengthSquared() > 0.01) kb.normalize();
-            le.setVelocity(kb.multiply(0.9).setY(0.6));
+            le.setVelocity(kb.multiply(1.6).setY(0.9));
+        }
+        new BukkitRunnable() {
+            int t = 0;
+            @Override public void run() {
+                if (t >= 8) { cancel(); return; }
+                double r = 1 + t;
+                for (int a = 0; a < 360; a += 12) {
+                    double rad = Math.toRadians(a);
+                    Location l = loc.clone().add(Math.cos(rad) * r, 0.2, Math.sin(rad) * r);
+                    w.spawnParticle(Particle.CLOUD, l, 1, 0.1, 0.1, 0.1, 0.02);
+                    w.spawnParticle(Particle.ELECTRIC_SPARK, l, 1, 0.1, 0.1, 0.1, 0.05);
+                }
+                t++;
+            }
+        }.runTaskTimer(this, 0L, 1L);
+    }
+
+    private void beam(Location a, Location b, Particle part) {
+        Vector v = b.toVector().subtract(a.toVector());
+        double len = v.length();
+        if (len < 0.1) return;
+        v.normalize();
+        for (double d = 0; d < len; d += 0.5) {
+            a.getWorld().spawnParticle(part, a.clone().add(v.clone().multiply(d)), 1, 0, 0, 0, 0);
         }
     }
 
-    private void stormDash(Player p) {
-        if (!tryUse(p, "doom_hammer:left", 15)) return;
-        p.getWorld().strikeLightningEffect(p.getLocation());
-        p.setVelocity(p.getEyeLocation().getDirection().multiply(2.0));
-        dashHit(p, Particle.ELECTRIC_SPARK, 6.0, false, 8);
+    private void chainLightning(Player p) {
+        long rem = remainingMs(p, "doom_hammer:left");
+        if (rem > 0) { cdMsg(p, rem); return; }
+        Location eye = p.getEyeLocation();
+        RayTraceResult r = p.getWorld().rayTraceEntities(eye, eye.getDirection(), 25, 1.0,
+                en -> en instanceof LivingEntity && !en.equals(p) && !(en instanceof ArmorStand));
+        if (r == null || !(r.getHitEntity() instanceof LivingEntity first)) {
+            bar(p, "No target in sight", NamedTextColor.RED);
+            return;
+        }
+        setCd(p, "doom_hammer:left", 12_000);
+        final Set<UUID> hit = new HashSet<>();
+        new BukkitRunnable() {
+            LivingEntity cur = first;
+            Location prev = p.getEyeLocation().add(0, -0.3, 0);
+            int n = 0;
+            @Override public void run() {
+                if (cur == null || n >= 5 || !cur.isValid()) { cancel(); return; }
+                hit.add(cur.getUniqueId());
+                Location cl = cur.getLocation().add(0, 1, 0);
+                beam(prev, cl, Particle.ELECTRIC_SPARK);
+                cur.getWorld().strikeLightningEffect(cur.getLocation());
+                cur.damage(8.0, p);
+                prev = cl;
+                n++;
+                LivingEntity next = null;
+                double best = Double.MAX_VALUE;
+                for (LivingEntity le : cur.getWorld().getNearbyLivingEntities(cur.getLocation(), 8)) {
+                    if (le.equals(p) || le instanceof ArmorStand || hit.contains(le.getUniqueId())) continue;
+                    double d = le.getLocation().distanceSquared(cur.getLocation());
+                    if (d < best) { best = d; next = le; }
+                }
+                cur = next;
+            }
+        }.runTaskTimer(this, 0L, 4L);
     }
 
     // ---------------- Titan Blade ----------------
@@ -700,19 +807,31 @@ public class SmpWeapons extends JavaPlugin implements Listener, TabExecutor {
         }.runTaskTimer(this, 0L, 4L);
     }
 
-    private void pocketSize(Player p) {
-        if (!tryUse(p, "titan_blade:left", 15)) return;
-        setScale(p, 0.4);
+    private void titanForm(Player p) {
+        if (!tryUse(p, "titan_blade:left", 40)) return;
+        setScale(p, 1.8);
         markResized(p);
-        p.getWorld().playSound(p.getLocation(), Sound.ENTITY_ENDERMAN_TELEPORT, 1f, 1.6f);
-        p.getWorld().spawnParticle(Particle.POOF, p.getLocation().add(0, 0.5, 0), 25, 0.4, 0.4, 0.4, 0.05);
-        bar(p, "Miniature form for 8 seconds", NamedTextColor.AQUA);
+        p.addPotionEffect(new PotionEffect(PotionEffectType.HEALTH_BOOST, 200, 3));
+        p.addPotionEffect(new PotionEffect(PotionEffectType.STRENGTH, 200, 1));
+        p.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, 200, 0));
         Bukkit.getScheduler().runTaskLater(this, () -> {
-            if (p.isOnline() && resized.contains(p.getUniqueId())) {
-                resetScale(p);
-                p.getWorld().spawnParticle(Particle.POOF, p.getLocation().add(0, 1, 0), 25, 0.4, 0.6, 0.4, 0.05);
-            }
-        }, 160L);
+            AttributeInstance m = p.getAttribute(Attribute.MAX_HEALTH);
+            if (p.isOnline() && m != null) p.setHealth(Math.min(m.getValue(), p.getHealth() + 16));
+        }, 2L);
+        Location l = p.getLocation();
+        p.getWorld().playSound(l, Sound.ENTITY_ENDER_DRAGON_GROWL, 1f, 0.7f);
+        p.getWorld().spawnParticle(Particle.EXPLOSION_EMITTER, l, 1);
+        for (LivingEntity le : p.getWorld().getNearbyLivingEntities(l, 5)) {
+            if (le.equals(p) || le instanceof ArmorStand) continue;
+            le.damage(6.0, p);
+            Vector kb = le.getLocation().toVector().subtract(l.toVector()).setY(0);
+            if (kb.lengthSquared() > 0.01) kb.normalize();
+            le.setVelocity(kb.multiply(1.3).setY(0.6));
+        }
+        bar(p, "TITAN FORM for 10 seconds", NamedTextColor.AQUA);
+        Bukkit.getScheduler().runTaskLater(this, () -> {
+            if (p.isOnline() && resized.contains(p.getUniqueId())) resetScale(p);
+        }, 200L);
     }
 
     // ---------------- Auto Bow ----------------
@@ -737,7 +856,7 @@ public class SmpWeapons extends JavaPlugin implements Listener, TabExecutor {
             p.getInventory().setItemInMainHand(held);
             stored = take;
         }
-        setCd(p, "auto_bow:right", 7_000);
+        setCd(p, "auto_bow:right", 10_000);
         final int shots = Math.min(stored, MAX_ARROWS);
         new BukkitRunnable() {
             int fired = 0;
@@ -753,6 +872,7 @@ public class SmpWeapons extends JavaPlugin implements Listener, TabExecutor {
                 Arrow a = p.launchProjectile(Arrow.class, p.getEyeLocation().getDirection().multiply(3.0).add(spread));
                 a.setPickupStatus(AbstractArrow.PickupStatus.DISALLOWED);
                 a.setDamage(4.0);
+                a.getPersistentDataContainer().set(boomKey, PersistentDataType.BYTE, (byte) 1);
                 fired++;
                 setStored(cur, Math.max(0, getStored(cur) - 1));
                 p.getInventory().setItemInMainHand(cur);
